@@ -13,21 +13,21 @@ from LineDetect.feature_finder import featureFinder
 
 class Continuum:
     """
-    Generates the continuum and continuun error.
+    Generates the continuum and continuum error.
    
     Args:
-        Lambda (np.ndarray): Array of wavelengths.
-        flux (np.ndarray): Array of self.flux values.
-        flux_err (np.ndarray): Array of uncertainties in the self.flux values.          
-        halfWindow (int): The half-window size to use for the smoothing procedure.
-            If this is a list/array of integers, then the continuum will be calculated
-            as the median curve across the fits across all half-window sizes in the list/array.
-            Defaults to 25.
-        N_sig_line2 (int): Defaults to 3.
+        wavelength (np.ndarray): Array of wavelengths.
+        flux (np.ndarray): Array of flux values corresponding to the wavelengths.
+        flux_err (np.ndarray): Array of uncertainties in the flux values.          
+        halfWindow (int): The half-window is used in estimating the continuum using the median filter.
+                          The median filter estimates the continuum at a pixel as the median value of the flux across a window centred at the pixel.
+                          halfWindow is the size of half this window i.e. halfWindow * 2 = full window over which the median filter is applied.
+                          This could be an array to try multiple medians and take the average of them all.
+        N_sig_continuum (int): Number of standard deviations in equivalent width, above which a line is deemed statsitically significant. Defaults to 3.
         region_size (int): The size of the region to apply the polynomial fitting. Defaults to 150 pixels.
-        resolution_element (int): Defaults to 3.
-        savgol_window_size (int): Defaults to 100. Can be set to 0 to skip the final savgol filtering.
-        savgol_poly_order (int): Defaults to 5. Only applicable if savgol_window_size is greater than 0.
+        resolution_element (int): The number of pixels per resolution element in the input spectrum. Defaults to 3.
+        savgol_window_size (int): Window size for Savitzky-Golay smoothing. Defaults to 100. Can be set to 0 to skip the final savgol filtering.
+        savgol_poly_order (int): Polynomial order for Savitzky-Golay smoothing. Defaults to 5. Only applicable if savgol_window_size is greater than 0.
 
     Methods:
         estimate:
@@ -36,10 +36,10 @@ class Continuum:
 
     """
 
-    def __init__(self, Lambda, flux, flux_err, halfWindow=25, region_size=150, resolution_element=3, 
-        savgol_window_size=100, savgol_poly_order=5, N_sig_limits=0.5, N_sig_line2=3):
-    
-        self.Lambda = Lambda
+    def __init__(self, wavelength, flux, flux_err, halfWindow=25, region_size=150, resolution_element=3, 
+        savgol_window_size=100, savgol_poly_order=5, N_sig_limits=0.5, N_sig_continuum=3):
+
+        self.wavelength = wavelength
         self.flux = flux
         self.flux_err = flux_err
         self.halfWindow = halfWindow
@@ -48,20 +48,21 @@ class Continuum:
         self.savgol_window_size = savgol_window_size
         self.savgol_poly_order = savgol_poly_order
         self.N_sig_limits = N_sig_limits
-        self.N_sig_line2 = N_sig_line2
+        self.N_sig_continuum = N_sig_continuum
 
-        self.size = len(self.Lambda)
+        self.size = len(self.wavelength)
 
         mask = np.where(np.isfinite(self.flux))[0]
         if len(mask) == 0:
             raise ValueError('WARNING: No non-finite values detected in the flux array!')
         if len(mask) != len(self.flux):
             print(f"WARNING: {len(mask)} non-finite values detected in the flux array, masking away...")
-            self.Lambda, self.flux, self.flux_err = self.Lambda[mask], self.flux[mask], self.flux_err[mask]
+            self.wavelength, self.flux, self.flux_err = self.wavelength[mask], self.flux[mask], self.flux_err[mask]
         
     def estimate(self, fit_legendre=True):
         """
-        Fits the spectra continuum using a robust moving median followed by a Legendre polynomial fit.
+        Estimates the continuum for the input spectrum by first fitting an estimate of the continuum using the median filter, followed by a Legendre polynomial fit (from Sembach and Savage 92)
+        which includes a robust error analysis.
 
         Args:
             fit_legendre (bool): Whether to fit with Legendre polynomials for a more robust estimate. Defaults to True.
@@ -141,7 +142,7 @@ class Continuum:
         The function returns an array of the fitted continuum values.
 
         Args:
-            max_order (int): The maximum order of the Legendre polynomial to fit. Defaults to 20.
+            max_order (int): The maximum order of the Legendre polynomial to fit.If the order of the polynomial exceeds max_order, the program assumes the region cannot be fit. Defaults to 20. 
             p_threshold (float): The p-value threshold for the F-test. If the p-value is greater than this threshold,
                 the fit is considered acceptable and the continuum level is returned. Defaults to 0.05.
 
@@ -150,7 +151,7 @@ class Continuum:
         """
 
         # Find the regions of absorption
-        featureRange = featureFinder(self.Lambda, self.flux, self.continuum, self.flux_err, self.continuum_err, N_sig_limits=self.N_sig_limits, N_sig_line2=self.N_sig_line2)
+        featureRange = featureFinder(self.wavelength, self.flux, self.continuum, self.flux_err, self.continuum_err, N_sig_continuum=self.N_sig_continuum, N_sig_limits=self.N_sig_limits)
         featureRange = featureRange.astype(int)
 
         # If there are no absorption lines, return the unchanged continuum array
@@ -254,7 +255,7 @@ class Continuum:
             clean_pixels.sort()
 
             #Find the functional fit of the continuum in this range
-            result = legendreFit(clean_pixels, self.Lambda, self.flux, self.flux_err, region_size=self.region_size, max_order=max_order, p_threshold=p_threshold)
+            result = legendreFit(clean_pixels, self.wavelength, self.flux, self.flux_err, region_size=self.region_size, max_order=max_order, p_threshold=p_threshold)
 
             if result is not None:
                 self.continuum[clean_pixels[0] : clean_pixels[-1] + 1] = result[0]
@@ -321,6 +322,7 @@ def legendreFit(indices, Lambda, flux, sigFlux, region_size, max_order, p_thresh
         chiSq_m = legendreChiSq(fit_m, fitLambda, fitFlux, fitsigFlux)
         chiSq_n = legendreChiSq(fit_n, fitLambda, fitFlux, fitsigFlux)
 
+        # Compute the degrees of freedom
         df1 = 2 * region_size - n
         df2 = 2 * region_size - n - 1
 

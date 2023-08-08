@@ -60,8 +60,8 @@ class Spectrum:
     """
 
     def __init__(self, halfWindow=25, resolution_range=(1400, 1700), region_size=100, resolution_element=3,
-        savgol_window_size=100, savgol_poly_order=5, N_sig_limits=0.5, N_sig_line1=5, N_sig_line2=3, 
-        rest_wavelength_1=2796.35, rest_wavelength_2=2803.53, directory=None, save_all=False):
+        savgol_window_size=100, savgol_poly_order=3, N_sig_limits=0.2, N_sig_line1=2.5, N_sig_line2=2.5, N_sig_continuum = 2,
+        rest_wavelength_1=1548.204, rest_wavelength_2=1550.781, directory=None, save_all=False):
         
         self.halfWindow = halfWindow
         self.resolution_range = resolution_range
@@ -73,6 +73,7 @@ class Spectrum:
         self.N_sig_limits = N_sig_limits
         self.N_sig_line1 = N_sig_line1
         self.N_sig_line2 = N_sig_line2
+        self.N_sig_continuum = N_sig_continuum
         self.rest_wavelength_1 = rest_wavelength_1
         self.rest_wavelength_2 = rest_wavelength_2
 
@@ -212,8 +213,8 @@ class Spectrum:
         self.Lambda, self.flux, self.flux_err = self.Lambda[mask], self.flux[mask], self.flux_err[mask]
   
         #Generate the contiuum
-        continuum = Continuum(Lambda, flux, flux_err, halfWindow=self.halfWindow, region_size=self.region_size, resolution_element=self.resolution_element, 
-            savgol_window_size=self.savgol_window_size, savgol_poly_order=self.savgol_poly_order, N_sig_limits=self.N_sig_limits, N_sig_line2=self.N_sig_line2)
+        continuum = Continuum(self, self.Lambda, self.flux, self.flux_err, halfWindow=self.halfWindow, region_size=self.region_size, resolution_element=self.resolution_element, 
+            savgol_window_size=self.savgol_window_size, savgol_poly_order=self.savgol_poly_order, N_sig_limits=self.N_sig_limits, N_sig_continuum=self.N_sig_continuum)
         continuum.estimate()
 
         #Save the continuum attributes
@@ -648,7 +649,7 @@ def _set_style_():
     plt.rcParams["xtick.labelsize"] = 16
     plt.rcParams["ytick.labelsize"] = 16
     plt.rcParams["font.size"] = 15
-    plt.rcParams["axes.prop_cycle"] = (cycler('color', ['#bc80bd', '#fb8072', '#b3de69', '#fdb462', '#fccde5', '#8dd3c7', '#ffed6f', '#bebada', '#80b1d3', '#ccebc5', '#d9d9d9']))  # Replace with valid color codes
+    #plt.rcParams["axes.prop_cycle"] = (cycler('color', ['#bc80bd', '#fb8072', '#b3de69', '#fdb462', '#fccde5', '#8dd3c7', '#ffed6f', '#bebada', '#80b1d3', '#ccebc5', '#d9d9d9']))  # Replace with valid color codes
     plt.rcParams["mathtext.fontset"] = "stix"
     plt.rcParams["font.family"] = "STIXGeneral"
     plt.rcParams["lines.linewidth"] = 2

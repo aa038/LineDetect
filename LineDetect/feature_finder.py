@@ -8,17 +8,18 @@ Created on Wed Apr 2 03:28:53 2023
 import numpy as np
 from typing import Tuple
 
-def featureFinder(Lambda: np.ndarray, flux: np.ndarray, yC: np.ndarray,  sigFlux: np.ndarray, sig_yC: np.ndarray,
-    N_sig_limits: float = 0.5, N_sig_line2: float = 3) -> np.ndarray:
+def featureFinder(wavelength: np.ndarray, flux: np.ndarray, yC: np.ndarray,  sigFlux: np.ndarray, sig_yC: np.ndarray,
+    N_sig_continuum: float = 3,  N_sig_limits: float = 0.5) -> np.ndarray:
     """
-    Find the limits of absorption or emission features in a spectrum.
+    Find absorption or emission features in a spectrum to fit Legendre polynomials across them for a better continuum estimation.
     
     Args:
         Lambda (np.ndarray): Array of wavelengths.
-        flux (np.ndarray): Array of flux values.
+        flux (np.ndarray): Array of flux values corresponding to the wavelengths.
         yC (np.ndarray): Array of continuum values.
         sigFlux (np.ndarray): Array of uncertainties in the flux values.
         sig_yC (np.ndarray): Array of uncertainties in the continuum values.
+        N_sig_continuum (int): Number of standard deviations in equivalent width, above which a line is deemed statsitically significant. Defaults to 3.
         N_sig_limits (int): Threshold of flux recovery for determining feature limits. 
             Defaults to 3. Can be set to 5 for a higher significant level.
 
@@ -31,13 +32,13 @@ def featureFinder(Lambda: np.ndarray, flux: np.ndarray, yC: np.ndarray,  sigFlux
 
     #Go through the spectrum and check for absorption/emission features
     i = 1
-    while i < len(Lambda):
+    while i < len(wavelength):
         #Check if there is absorption/emission at the current pixel
-        eqWidth, deltaEqWidth = aperturePixelEW(i, Lambda, flux, yC, sigFlux, sig_yC)
+        eqWidth, deltaEqWidth = aperturePixelEW(i, wavelength, flux, yC, sigFlux, sig_yC)
 
         #If there is a statistically significant feature, get the limits of the feature
-        if np.abs(eqWidth / deltaEqWidth) >= N_sig_line2:
-            left, right = apertureFeatureLimits(i, Lambda, flux, yC, sigFlux, sig_yC, N_sig_limits=N_sig_limits)
+        if np.abs(eqWidth / deltaEqWidth) >= N_sig_continuum:
+            left, right = apertureFeatureLimits(i, wavelength, flux, yC, sigFlux, sig_yC, N_sig_limits=N_sig_limits)
             #Write it to the list of features
             featureRange = featureRange + [left, right]
             #Once a feature is found, skip over to the right of the feature
@@ -51,7 +52,7 @@ def featureFinder(Lambda: np.ndarray, flux: np.ndarray, yC: np.ndarray,  sigFlux
 
     return featureRange
 
-def apertureFeatureLimits(i: int, Lambda: np.ndarray, flux: np.ndarray, yC: np.ndarray, sigFlux: np.ndarray, sig_yC: np.ndarray,
+def apertureFeatureLimits(i: int, wavelength: np.ndarray, flux: np.ndarray, yC: np.ndarray, sigFlux: np.ndarray, sig_yC: np.ndarray,
     N_sig_limits: int = 0.5) -> Tuple[int, int]:
     """
     Returns the indices of the leftmost and rightmost pixels of a feature centered at the given index.
@@ -74,18 +75,18 @@ def apertureFeatureLimits(i: int, Lambda: np.ndarray, flux: np.ndarray, yC: np.n
 
     # Scan blueward to find the left limit of the feature
     while j >= 0:
-        eqWidth, deltaEqWidth = aperturePixelEW(j, Lambda, flux, yC, sigFlux, sig_yC)
+        eqWidth, deltaEqWidth = aperturePixelEW(j, wavelength, flux, yC, sigFlux, sig_yC)
         #Check if the flux recovers sufficiently at this, if so, break
-        if abs(eqWidth / deltaEqWidth) <= N_sig_limits:
+        if eqWidth / deltaEqWidth <= N_sig_limits:
             break
         j -= 1 #If it doesn't recover, move to the preceding pixel
     
     #Scan redward to find the right limit of the feature
     #Ensure k does not run out of bounds of the spectrum
-    while k < len(Lambda):
-        eqWidth, deltaEqWidth = aperturePixelEW(k, Lambda, flux, yC, sigFlux, sig_yC)
+    while k < len(wavelength):
+        eqWidth, deltaEqWidth = aperturePixelEW(k, wavelength, flux, yC, sigFlux, sig_yC)
         #Check if the flux recovers sufficiently at this pixel
-        if abs(eqWidth / deltaEqWidth) <= N_sig_limits:
+        if eqWidth / deltaEqWidth <= N_sig_limits:
             break
         k += 1 # If it doesn't recover, move to the next pixel, if so, break
 
@@ -121,7 +122,7 @@ def optimizedFeatureLimits(i: int, Lambda: np.array, flux: np.array, yC: np.arra
         eqWidth, deltaEqWidth = optimizedResEleEW(left_index, Lambda, flux, yC, sigFlux, sig_yC, R, resolution_element)
 
         # Does the flux recover sufficiently at this pixel?
-        if abs(eqWidth / deltaEqWidth) <= N_sig_limits:
+        if eqWidth / deltaEqWidth <= N_sig_limits:
             break #If so, exit the loop
         left_index -= 1 #If not, start again for the preceding pixel i.e. decrement the pixel by 1
         
@@ -130,7 +131,7 @@ def optimizedFeatureLimits(i: int, Lambda: np.array, flux: np.array, yC: np.arra
         eqWidth, deltaEqWidth = optimizedResEleEW(right_index, Lambda, flux, yC, sigFlux, sig_yC, R, resolution_element)
         
         #Does the flux recover sufficiently at this pixel?
-        if abs(eqWidth / deltaEqWidth) <= N_sig_limits:
+        if eqWidth / deltaEqWidth <= N_sig_limits:
             break #If so, exit the loop
         right_index += 1 # If not, start again for the next pixel i.e. increment the pixel by 1
     
